@@ -14,11 +14,13 @@ Open **EspHub Wi-Fi** in APPLaunch. Choose **Sign in**, scan the QR on a phone
 device access. The public Clerk client uses the device grant with
 `devices:read devices:write offline_access`. Sign out removes the local grant.
 
-1. Put the target in EspHub Bootloader and choose **Nearby devices**. Each
-   service advertisement is listed by Bluetooth address and signal strength.
-2. Select an advertisement, then choose its registration from your EspHub
-   account. Bootloaders advertise a common service UUID. The TLS-PSK handshake
-   verifies the selected registration before enabling Wi-Fi operations.
+1. Put the target in EspHub Bootloader and choose **Nearby devices**. When signed
+   in, a matching advertisement shows the registered device name and signal
+   strength. Other advertisements show their Bluetooth address.
+2. Select a board. The app automatically selects a registration when exactly
+   one of your physical devices has that Bluetooth address. If the address is
+   missing or ambiguous, choose a registration manually. The TLS-PSK handshake
+   verifies the board before Wi-Fi setup.
 3. Select **Scan networks** to scan on the target or **Enter SSID manually**
    for a hidden network. Enter the network password (empty for an open network).
 4. **Wi-Fi saved** appears after the target reports that it saved and connected

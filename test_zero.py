@@ -1,14 +1,50 @@
 """Regression checks for the GUI's provisioning decisions (no radio required)."""
 
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
-from app import JoinFailed, join, networks
+from app import App, JoinFailed, join, networks
 from hub import Problem
 from screen import Screen
 
 
 class ProvisionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_registration_selection(self):
+        address = "02:AA:BB:CC:DD:EE"
+        board = {"kind": "physical", "id": "one", "name": "Kitchen", "ble_address": address.lower()}
+        other = {"kind": "physical", "id": "two", "name": "Desk"}
+
+        async def wait(title, rows, action):
+            return await action
+
+        for devices, manual in [
+            ([board, other], False),
+            ([dict(board, ble_address=None), other], True),
+            ([board, dict(other, ble_address=address)], True),
+        ]:
+            with self.subTest(devices=devices):
+                ui = Mock(wait=wait, menu=AsyncMock(return_value=1))
+                hub = Mock(tokens={"signed": True})
+                hub.tool = AsyncMock(side_effect=[devices, Problem("test credential request")])
+                with self.assertRaisesRegex(Problem, "test credential request"):
+                    await App(ui, hub).configure(Mock(address=address))
+                hub.tool.assert_awaited_with("wifi.ble_credential", device_id="two" if manual else "one")
+                self.assertEqual(ui.menu.await_count, int(manual))
+
+    async def test_named_and_unmatched_advertisements(self):
+        async def wait(title, rows, action):
+            return await action
+        ui = Mock(wait=wait, menu=AsyncMock(return_value=1))
+        app = App(ui, Mock(tokens={"signed": True}))
+        app.registrations = AsyncMock(return_value=[{"name": "Kitchen", "ble_address": "02:aa:bb:cc:dd:ee"}])
+        app.configure = AsyncMock()
+        other = Mock(address="02:11:22:33:44:55")
+        pairs = [(Mock(address="02:AA:BB:CC:DD:EE"), Mock(rssi=-40)), (other, Mock(rssi=-65))]
+        with patch("app.nearby", new=AsyncMock(return_value=pairs)):
+            await app.discover()
+        self.assertEqual(ui.menu.await_args.args[1], ["Kitchen    -40 dBm", "02:11:22:33:44:55    -65 dBm", "Scan again"])
+        app.configure.assert_awaited_once_with(other, app.registrations.return_value)
+
     async def test_selected_wifi_and_manual_hidden(self):
         for manual in (False, True):
             with self.subTest(manual=manual):
