@@ -14,7 +14,7 @@ install -m 644 "$src/esphub-wifi.desktop" "$launcher/applications/"
 install -m 644 "$src/esphub-wifi.png" "$launcher/share/images/"
 cat >"$stage/DEBIAN/control" <<'EOF'
 Package: esphub-wifi
-Version: 0.1.0
+Version: 0.2.0
 Architecture: all
 Maintainer: EspHub contributors
 Description: Bluetooth Wi-Fi provisioning GUI for M5Stack Cardputer Zero

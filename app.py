@@ -27,6 +27,10 @@ async def nearby():
     )
 
 
+def registrations_at(devices, address):
+    return [d for d in devices if (d.get("ble_address") or "").lower() == address.lower()]
+
+
 class JoinFailed(Problem):
     pass
 
@@ -130,22 +134,30 @@ class App:
             qr=grant.get("verification_uri_complete") or grant["verification_uri"],
         )
 
-    async def configure(self, device):
-        if not self.hub.tokens:
-            await self.login()
+    async def registrations(self):
         devices = await self.ui.wait(
             "Your EspHub devices",
             ["Loading registrations…"],
             self.hub.tool("devices.list"),
         )
-        owned = [d for d in devices if d["kind"] == "physical"]
+        return [d for d in devices if d["kind"] == "physical"]
+
+    async def configure(self, device, owned=None):
+        if not self.hub.tokens:
+            await self.login()
+            owned = None
+        if owned is None:
+            owned = await self.registrations()
         if not owned:
             raise Problem("No physical devices registered to this account.")
-        owner = owned[
-            await self.ui.menu(
-                "Match registration", [f"{d['name']} · {d['id'][:6]}" for d in owned]
-            )
-        ]
+        matches = registrations_at(owned, device.address)
+        if len(matches) == 1:
+            owner = matches[0]
+        else:
+            choices = matches or owned
+            owner = choices[await self.ui.menu(
+                "Match registration", [f"{d['name']} · {d['id'][:6]}" for d in choices]
+            )]
         cred = await self.ui.wait(
             "Device credential",
             [owner["name"]],
@@ -181,7 +193,15 @@ class App:
             pairs = await self.ui.wait(
                 "Nearby devices", ["Scanning EspHub Bluetooth service…"], nearby()
             )
-            labels = [f"{dev.address}    {adv.rssi} dBm" for dev, adv in pairs]
+            owned = None
+            if pairs and self.hub.tokens:
+                with suppress(Problem):
+                    owned = await self.registrations()
+            labels = []
+            for device, adv in pairs:
+                matches = registrations_at(owned or [], device.address)
+                name = matches[0]["name"] if len(matches) == 1 else device.address
+                labels.append(f"{name}    {adv.rssi} dBm")
             if not pairs:
                 await self.ui.message(
                     "No nearby devices",
@@ -190,7 +210,7 @@ class App:
             index = await self.ui.menu("Nearby devices", [*labels, "Scan again"])
             if index < len(pairs):
                 try:
-                    await self.configure(pairs[index][0])
+                    await self.configure(pairs[index][0], owned)
                 except Back:
                     pass
                 return
