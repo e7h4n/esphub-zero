@@ -5,6 +5,7 @@ import asyncio
 import ssl
 from contextlib import closing, suppress
 
+import dbus
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
 from macos import SERVICE, Channel
@@ -13,9 +14,37 @@ from hub import Hub, Problem
 from screen import Back, Quit, Screen, framebuffer_output, keyboard_device
 
 
+ADAPTER = "hci0"
+
+
+def set_bluetooth_power(enabled):
+    """Set the Zero's onboard adapter power. Return True if we changed it."""
+    prop = ("org.bluez.Adapter1", "Powered")
+    try:
+        with closing(dbus.SystemBus(private=True)) as bus:
+            adapter = bus.get_object(
+                "org.bluez", f"/org/bluez/{ADAPTER}", introspect=False
+            )
+            props = dbus.Interface(adapter, dbus.PROPERTIES_IFACE)
+            if bool(props.Get(*prop, timeout=8)) == enabled:
+                return False
+            try:
+                props.Set(*prop, dbus.Boolean(enabled), signature="ssv", timeout=8)
+            except dbus.DBusException:
+                # A lost reply can still leave the adapter in the requested state.
+                if bool(props.Get(*prop, timeout=8)) != enabled:
+                    raise
+            return True
+    except dbus.DBusException:
+        mode = "on" if enabled else "off"
+        raise Problem(
+            f"Could not turn Bluetooth {mode}. Check Cardputer Power and retry."
+        ) from None
+
+
 async def nearby():
     results = await BleakScanner.discover(
-        timeout=6, return_adv=True, service_uuids=[SERVICE]
+        timeout=6, return_adv=True, service_uuids=[SERVICE], adapter=ADAPTER
     )
     return sorted(
         (
@@ -117,6 +146,7 @@ async def networks(ui, session):
 class App:
     def __init__(self, ui, hub):
         self.ui, self.hub = ui, hub
+        self.enabled_bluetooth = False
 
     async def login(self):
         grant = await self.ui.wait(
@@ -190,6 +220,10 @@ class App:
 
     async def discover(self):
         while True:
+            self.ui.draw("Nearby devices", ["Preparing Bluetooth…"], hint="")
+            # Record the power change before a queued Esc or Ctrl+Q can cancel the scan.
+            if await asyncio.to_thread(set_bluetooth_power, True):
+                self.enabled_bluetooth = True
             pairs = await self.ui.wait(
                 "Nearby devices", ["Scanning EspHub Bluetooth service…"], nearby()
             )
@@ -215,7 +249,7 @@ class App:
                     pass
                 return
 
-    async def run(self):
+    async def home(self):
         while True:
             signed = bool(self.hub.tokens)
             try:
@@ -244,6 +278,32 @@ class App:
                     "Check Bluetooth, network and device mode, then retry.",
                 )
 
+    async def confirm_exit(self):
+        while True:
+            with suppress(Quit):
+                choice = await self.ui.menu(
+                    "Turn Bluetooth off?", ["Turn off and exit", "Keep on and exit"]
+                )
+                if choice == 1:
+                    return
+                self.ui.draw("Bluetooth", ["Turning Bluetooth off…"], hint="")
+                try:
+                    await asyncio.to_thread(set_bluetooth_power, False)
+                    return
+                except Problem as e:
+                    await self.ui.message("Bluetooth", str(e))
+
+    async def run(self):
+        while True:
+            with suppress(Quit):
+                await self.home()
+            if self.enabled_bluetooth:
+                try:
+                    await self.confirm_exit()
+                except Back:
+                    continue
+            return
+
 
 async def main():
     with (
@@ -267,7 +327,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except Quit:
-        pass
+    asyncio.run(main())

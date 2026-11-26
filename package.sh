@@ -14,10 +14,10 @@ install -m 644 "$src/esphub-wifi.desktop" "$launcher/applications/"
 install -m 644 "$src/esphub-wifi.png" "$launcher/share/images/"
 cat >"$stage/DEBIAN/control" <<'EOF'
 Package: esphub-wifi
-Version: 0.2.0
+Version: 0.3.0
 Architecture: all
 Maintainer: EspHub contributors
 Description: Bluetooth Wi-Fi provisioning GUI for M5Stack Cardputer Zero
-Depends: python3 (>= 3.13), python3-bleak (>= 0.22), python3-evdev, python3-pil, python3-numpy, python3-requests, python3-qrcode, fonts-dejavu-core, bluez
+Depends: python3 (>= 3.13), python3-bleak (>= 0.22), python3-dbus, python3-evdev, python3-pil, python3-numpy, python3-requests, python3-qrcode, fonts-dejavu-core, bluez
 EOF
 dpkg-deb --root-owner-group --build "$stage" "$dest"
