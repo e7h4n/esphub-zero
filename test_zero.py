@@ -40,7 +40,10 @@ class ProvisionTests(unittest.IsolatedAsyncioTestCase):
         app.configure = AsyncMock()
         other = Mock(address="02:11:22:33:44:55")
         pairs = [(Mock(address="02:AA:BB:CC:DD:EE"), Mock(rssi=-40)), (other, Mock(rssi=-65))]
-        with patch("app.nearby", new=AsyncMock(return_value=pairs)):
+        with (
+            patch("app.set_bluetooth_power", return_value=False),
+            patch("app.nearby", return_value=pairs),
+        ):
             await app.discover()
         self.assertEqual(ui.menu.await_args.args[1], ["Kitchen    -40 dBm", "02:11:22:33:44:55    -65 dBm", "Scan again"])
         app.configure.assert_awaited_once_with(other, app.registrations.return_value)
